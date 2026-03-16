@@ -115,7 +115,7 @@ Any tool with a "custom base URL" or "OpenAI-compatible" setting works:
 | **LiteLLM** | `api_base="http://localhost:4523/v1"` |
 | **OpenClaw** | `OPENAI_BASE_URL=http://host.docker.internal:4523/v1` |
 
-Use `claude-sonnet-4`, `claude-opus-4`, or `claude-haiku-4` as the model name. Model names with a `claude-code-cli/` or `openai/` prefix are also accepted (the prefix is stripped automatically). Unknown models fall back to the `DEFAULT_MODEL`.
+Use `claude-sonnet-4-6`, `claude-opus-4-6`, or `claude-haiku-4-5` as the model name (shorter aliases like `sonnet`, `opus`, `haiku` also work). Model names with a `claude-code-cli/` or `openai/` prefix are also accepted (the prefix is stripped automatically). Unknown models fall back to the `DEFAULT_MODEL`.
 
 ## Streaming
 
