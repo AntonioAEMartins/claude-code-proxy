@@ -2,6 +2,7 @@ import type { CliEvent } from '../protocol/cli-types.js';
 import type { OpenAIChatCompletionResponse, OpenAIToolCall, OpenAICompletionUsage } from '../protocol/openai-types.js';
 import { logger } from '../util/logger.js';
 import { serverError, rateLimited } from '../util/errors.js';
+import { stripMcpToolPrefix } from '../tools/tool-translator.js';
 
 interface AccumulatedToolCall {
   id: string;
@@ -22,8 +23,9 @@ export async function collectOpenAIResponse(
   const toolCalls: AccumulatedToolCall[] = [];
   let currentToolCallIndex = -1;
   let usage: OpenAICompletionUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+  let sawToolUseStop = false;
 
-  for await (const event of events) {
+  eventLoop: for await (const event of events) {
     switch (event.type) {
       case 'stream_event': {
         const inner = event.event;
@@ -39,7 +41,7 @@ export async function collectOpenAIResponse(
             currentToolCallIndex++;
             toolCalls.push({
               id: inner.content_block.id,
-              name: inner.content_block.name,
+              name: stripMcpToolPrefix(inner.content_block.name),
               partialJson: '',
             });
           }
@@ -56,6 +58,7 @@ export async function collectOpenAIResponse(
         if (inner.type === 'message_delta') {
           if (inner.delta.stop_reason === 'tool_use') {
             finishReason = 'tool_calls';
+            sawToolUseStop = true;
           } else if (inner.delta.stop_reason === 'max_tokens') {
             finishReason = 'length';
           } else {
@@ -63,6 +66,14 @@ export async function collectOpenAIResponse(
           }
           usage.completion_tokens = inner.usage.output_tokens;
           usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
+        }
+
+        // After message_stop for a tool_use turn, stop consuming events.
+        // The CLI would continue into a second turn with the MCP bridge's
+        // placeholder result — that garbage must never reach the client.
+        if (inner.type === 'message_stop' && sawToolUseStop) {
+          logger.debug('Stopping event collection after tool_use turn (intercepting MCP placeholder turn)');
+          break eventLoop;
         }
 
         break;

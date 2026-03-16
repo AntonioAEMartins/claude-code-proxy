@@ -65,3 +65,17 @@ export function writeTempMcpConfig(mcpConfig: McpConfig): { configPath: string; 
 export function emptyMcpConfig(): McpConfig {
   return { mcpServers: {} };
 }
+
+/**
+ * The MCP server name used for client-defined tools.
+ * The CLI prefixes tool names with `mcp__<server_name>__`.
+ */
+const MCP_TOOL_PREFIX = 'mcp__client_tools__';
+
+/**
+ * Strip the `mcp__client_tools__` prefix that the CLI adds to MCP tool names.
+ * Returns the original tool name as defined by the client.
+ */
+export function stripMcpToolPrefix(name: string): string {
+  return name.startsWith(MCP_TOOL_PREFIX) ? name.slice(MCP_TOOL_PREFIX.length) : name;
+}
