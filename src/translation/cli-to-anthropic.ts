@@ -2,6 +2,7 @@ import type { CliEvent } from '../protocol/cli-types.js';
 import type { AnthropicMessagesResponse, AnthropicResponseContentBlock, AnthropicUsage } from '../protocol/anthropic-types.js';
 import { logger } from '../util/logger.js';
 import { serverError, rateLimited } from '../util/errors.js';
+import { stripMcpToolPrefix } from '../tools/tool-translator.js';
 
 /**
  * Collect all CLI events and build a non-streaming Anthropic Messages response.
@@ -17,10 +18,11 @@ export async function collectAnthropicResponse(
   const contentBlocks: AnthropicResponseContentBlock[] = [];
   let usage: AnthropicUsage = { input_tokens: 0, output_tokens: 0 };
   let hasResult = false;
+  let sawToolUseStop = false;
   // Track partial JSON accumulation for tool_use blocks by index
   const partialJsonByIndex = new Map<number, string>();
 
-  for await (const event of events) {
+  eventLoop: for await (const event of events) {
     switch (event.type) {
       case 'stream_event': {
         const inner = event.event;
@@ -44,7 +46,7 @@ export async function collectAnthropicResponse(
             contentBlocks[inner.index] = {
               type: 'tool_use',
               id: block.id,
-              name: block.name,
+              name: stripMcpToolPrefix(block.name),
               input: {},
             };
           } else if (block.type === 'thinking' && enableThinking) {
@@ -95,6 +97,17 @@ export async function collectAnthropicResponse(
           if (inner.usage) {
             usage.output_tokens = inner.usage.output_tokens;
           }
+          if (stopReason === 'tool_use') {
+            sawToolUseStop = true;
+          }
+        }
+
+        // After message_stop for a tool_use turn, stop consuming events.
+        // The CLI would continue into a second turn with the MCP bridge's
+        // placeholder result — that garbage must never reach the client.
+        if (inner.type === 'message_stop' && sawToolUseStop) {
+          logger.debug('Stopping event collection after tool_use turn (intercepting MCP placeholder turn)');
+          break eventLoop;
         }
 
         break;

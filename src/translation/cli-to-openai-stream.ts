@@ -1,6 +1,7 @@
 import type { CliEvent } from '../protocol/cli-types.js';
 import type { OpenAIChatCompletionChunk } from '../protocol/openai-types.js';
 import { logger } from '../util/logger.js';
+import { stripMcpToolPrefix } from '../tools/tool-translator.js';
 
 function makeChunk(
   id: string,
@@ -28,6 +29,7 @@ export async function* cliToOpenAISSE(
   let model = '';
   let toolCallIndex = -1;
   let sentRole = false;
+  let sawToolUseStop = false;
 
   for await (const event of events) {
     if (event.type !== 'stream_event') {
@@ -64,7 +66,7 @@ export async function* cliToOpenAISSE(
               index: toolCallIndex,
               id: block.id,
               type: 'function',
-              function: { name: block.name, arguments: '' },
+              function: { name: stripMcpToolPrefix(block.name), arguments: '' },
             }],
           }, null);
           yield `data: ${JSON.stringify(chunk)}\n\n`;
@@ -96,6 +98,7 @@ export async function* cliToOpenAISSE(
         let finishReason: 'stop' | 'tool_calls' | 'length' = 'stop';
         if (inner.delta.stop_reason === 'tool_use') {
           finishReason = 'tool_calls';
+          sawToolUseStop = true;
         } else if (inner.delta.stop_reason === 'max_tokens') {
           finishReason = 'length';
         }
@@ -104,8 +107,19 @@ export async function* cliToOpenAISSE(
         break;
       }
 
+      case 'message_stop': {
+        // After message_stop for a tool_use turn, emit [DONE] and stop.
+        // The CLI would continue into a second turn with the MCP bridge's
+        // placeholder result — that garbage must never reach the client.
+        if (sawToolUseStop) {
+          logger.debug('Stopping stream after tool_use turn (intercepting MCP placeholder turn)');
+          yield 'data: [DONE]\n\n';
+          return;
+        }
+        break;
+      }
+
       case 'content_block_stop':
-      case 'message_stop':
         break;
 
       default:

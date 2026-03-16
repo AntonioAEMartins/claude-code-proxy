@@ -1,5 +1,6 @@
 import type { CliEvent, StreamInnerEvent } from '../protocol/cli-types.js';
 import { logger } from '../util/logger.js';
+import { stripMcpToolPrefix } from '../tools/tool-translator.js';
 
 function formatSSE(event: StreamInnerEvent): string {
   return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
@@ -15,11 +16,25 @@ export async function* cliToAnthropicSSE(
   enableThinking: boolean,
 ): AsyncGenerator<string> {
   const filteredIndices = new Set<number>();
+  let sawToolUseStop = false;
 
   for await (const event of events) {
     switch (event.type) {
       case 'stream_event': {
         const inner = event.event;
+
+        // Strip MCP prefix from tool_use block names
+        if (
+          inner.type === 'content_block_start' &&
+          inner.content_block.type === 'tool_use'
+        ) {
+          inner.content_block.name = stripMcpToolPrefix(inner.content_block.name);
+        }
+
+        // Track tool_use stop reason for multi-turn interception
+        if (inner.type === 'message_delta' && inner.delta.stop_reason === 'tool_use') {
+          sawToolUseStop = true;
+        }
 
         // Filter thinking blocks if not enabled
         if (!enableThinking) {
@@ -46,6 +61,15 @@ export async function* cliToAnthropicSSE(
         }
 
         yield formatSSE(inner);
+
+        // After yielding message_stop for a tool_use turn, stop the stream.
+        // The CLI would continue into a second turn with the MCP bridge's
+        // placeholder result — that garbage must never reach the client.
+        if (inner.type === 'message_stop' && sawToolUseStop) {
+          logger.debug('Stopping stream after tool_use turn (intercepting MCP placeholder turn)');
+          return;
+        }
+
         break;
       }
 
