@@ -1,0 +1,245 @@
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { Config } from '../config.js';
+import type { OpenAIChatCompletionRequest, OpenAIChatMessage } from '../protocol/openai-types.js';
+import type { AnthropicMessagesRequest, AnthropicMessage, AnthropicContentBlock, AnthropicToolDefinition, AnthropicToolChoice } from '../protocol/anthropic-types.js';
+import { parseJsonBody, addUnsupportedWarnings } from '../server/middleware.js';
+import { translateAnthropicRequest } from '../translation/anthropic-to-cli.js';
+import { buildArgs } from '../cli/args-builder.js';
+import { spawnCli } from '../cli/subprocess.js';
+import { cliToOpenAISSE } from '../translation/cli-to-openai-stream.js';
+import { collectOpenAIResponse } from '../translation/cli-to-openai.js';
+import { mapToolDefinitions } from '../openclaw/tool-map.js';
+import { stripToolingSections, hasToolingSections } from '../openclaw/prompt-filter.js';
+import { badRequest } from '../util/errors.js';
+import { logger } from '../util/logger.js';
+
+/**
+ * Convert OpenAI messages to Anthropic format.
+ * System messages become the top-level system field.
+ */
+function convertMessages(messages: OpenAIChatMessage[]): {
+  system?: string;
+  anthropicMessages: AnthropicMessage[];
+} {
+  let system: string | undefined;
+  const anthropicMessages: AnthropicMessage[] = [];
+
+  for (const msg of messages) {
+    if (msg.role === 'system') {
+      // Collect system messages — handle both 'text' and 'input_text' content parts
+      const text = typeof msg.content === 'string' ? msg.content :
+        Array.isArray(msg.content) ? msg.content
+          .filter(p => p.type === 'text' || p.type === 'input_text')
+          .map(p => ('text' in p ? p.text : ''))
+          .join('\n') : '';
+      system = system ? `${system}\n\n${text}` : text;
+    } else if (msg.role === 'user') {
+      const content = typeof msg.content === 'string' ? msg.content :
+        Array.isArray(msg.content) ? msg.content.map(part => {
+          if (part.type === 'text' || part.type === 'input_text') {
+            return { type: 'text' as const, text: part.text };
+          }
+          return { type: 'text' as const, text: '[Unsupported content type]' };
+        }) : '';
+      anthropicMessages.push({ role: 'user', content });
+    } else if (msg.role === 'assistant') {
+      const blocks: AnthropicContentBlock[] = [];
+      if (msg.content) {
+        let text = '';
+        if (typeof msg.content === 'string') {
+          text = msg.content;
+        } else if (Array.isArray(msg.content)) {
+          text = msg.content
+            .filter(p => p.type === 'text' || p.type === 'input_text')
+            .map(p => 'text' in p ? p.text : '')
+            .join('\n\n');
+        }
+        if (text) blocks.push({ type: 'text', text });
+      }
+      if (msg.tool_calls) {
+        for (const tc of msg.tool_calls) {
+          let parsedInput: Record<string, unknown>;
+          try {
+            parsedInput = JSON.parse(tc.function.arguments || '{}');
+          } catch {
+            parsedInput = {};
+          }
+          blocks.push({
+            type: 'tool_use',
+            id: tc.id,
+            name: tc.function.name,
+            input: parsedInput,
+          });
+        }
+      }
+      anthropicMessages.push({
+        role: 'assistant',
+        content: blocks.length > 0 ? blocks : (msg.content as string) || '',
+      });
+    } else if (msg.role === 'tool') {
+      anthropicMessages.push({
+        role: 'user',
+        content: [{
+          type: 'tool_result',
+          tool_use_id: msg.tool_call_id || '',
+          content: typeof msg.content === 'string' ? msg.content : '',
+        }],
+      });
+    }
+  }
+
+  return { system, anthropicMessages };
+}
+
+/**
+ * Convert OpenAI tool definitions to Anthropic format.
+ */
+function convertTools(tools?: OpenAIChatCompletionRequest['tools']): AnthropicToolDefinition[] | undefined {
+  if (!tools || tools.length === 0) return undefined;
+  return tools.map(t => ({
+    name: t.function.name,
+    description: t.function.description,
+    input_schema: t.function.parameters || { type: 'object', properties: {} },
+  }));
+}
+
+/**
+ * Convert OpenAI tool_choice to Anthropic format.
+ */
+function convertToolChoice(choice?: OpenAIChatCompletionRequest['tool_choice']): AnthropicToolChoice | undefined {
+  if (!choice) return undefined;
+  if (choice === 'auto') return { type: 'auto' };
+  if (choice === 'required') return { type: 'any' };
+  if (choice === 'none') return undefined;
+  if (typeof choice === 'object' && choice.type === 'function') {
+    return { type: 'tool', name: choice.function.name };
+  }
+  return undefined;
+}
+
+export async function handleChatCompletions(
+  req: IncomingMessage,
+  res: ServerResponse,
+  config: Config,
+): Promise<void> {
+  const body = await parseJsonBody(req) as unknown as OpenAIChatCompletionRequest;
+
+  if (!body.model) throw badRequest('model is required');
+  if (!body.messages || !Array.isArray(body.messages) || body.messages.length === 0) {
+    throw badRequest('messages is required and must be a non-empty array');
+  }
+
+  // Track unsupported params
+  const unsupported: string[] = [];
+  if (body.temperature !== undefined) unsupported.push('temperature');
+  if (body.top_p !== undefined) unsupported.push('top_p');
+  if (body.frequency_penalty !== undefined) unsupported.push('frequency_penalty');
+  if (body.presence_penalty !== undefined) unsupported.push('presence_penalty');
+  if (body.n !== undefined && body.n > 1) unsupported.push('n');
+  if (body.stop !== undefined) unsupported.push('stop');
+  if (body.tools !== undefined) unsupported.push('tools');
+  if (body.tool_choice !== undefined) unsupported.push('tool_choice');
+  if (body.response_format !== undefined) unsupported.push('response_format');
+
+  if (unsupported.length > 0) {
+    addUnsupportedWarnings(res, unsupported);
+  }
+
+  // Convert OpenAI format to Anthropic format
+  const { system, anthropicMessages } = convertMessages(body.messages);
+  let tools = convertTools(body.tools);
+  const toolChoice = convertToolChoice(body.tool_choice);
+
+  // Map tool names (e.g. OpenClaw "exec" → "Bash") and build reverse map for responses
+  let reverseToolMap: Record<string, string> | undefined;
+  if (tools && tools.length > 0) {
+    const { mappedTools, reverseToolMap: rmap } = mapToolDefinitions(tools);
+    tools = mappedTools;
+    if (Object.keys(rmap).length > 0) {
+      reverseToolMap = rmap;
+      logger.debug('Tool name mapping applied', { reverseToolMap });
+    }
+  }
+
+  // Strip injected tooling sections from system prompt (e.g. OpenClaw tool defs)
+  let filteredSystem = system;
+  if (system && hasToolingSections(system)) {
+    filteredSystem = stripToolingSections(system);
+    logger.debug('Stripped tooling sections from system prompt');
+  }
+
+  // Get effort from custom header
+  // Build Anthropic-format request for the translation pipeline
+  const anthropicRequest: AnthropicMessagesRequest = {
+    model: body.model,
+    messages: anthropicMessages,
+    max_tokens: body.max_tokens ?? body.max_completion_tokens ?? 4096,
+    system: filteredSystem,
+    tools,
+    tool_choice: toolChoice,
+    metadata: undefined,
+  };
+
+  const cliArgs = translateAnthropicRequest(anthropicRequest);
+  const { args, prompt, outputFile } = buildArgs(cliArgs, config);
+
+  logger.debug('Spawning CLI for OpenAI request', {
+    model: body.model,
+    stream: body.stream,
+    messageCount: body.messages.length,
+  });
+
+  const { events, kill } = spawnCli(args, prompt, config.requestTimeoutMs, outputFile);
+
+  req.on('close', () => {
+    logger.debug('Client disconnected, killing CLI process');
+    kill();
+  });
+
+  if (body.stream) {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    });
+    // SSE connection confirmation — lets clients know the stream is live
+    res.write(':ok\n\n');
+
+    try {
+      for await (const chunk of cliToOpenAISSE(events, reverseToolMap)) {
+        if (!res.writable) break;
+        res.write(chunk);
+      }
+    } catch (err) {
+      logger.error('Error during OpenAI streaming', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      // Propagate error as SSE event if stream is still writable
+      if (res.writable) {
+        const errorPayload = {
+          error: {
+            message: err instanceof Error ? err.message : String(err),
+            type: 'server_error',
+            code: null,
+          },
+        };
+        res.write(`data: ${JSON.stringify(errorPayload)}\n\n`);
+        res.write('data: [DONE]\n\n');
+      }
+    } finally {
+      kill();
+      res.end();
+    }
+  } else {
+    try {
+      const result = await collectOpenAIResponse(events, reverseToolMap);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (err) {
+      kill();
+      throw err;
+    } finally {
+      kill();
+    }
+  }
+}

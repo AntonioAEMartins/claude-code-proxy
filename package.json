@@ -1,0 +1,23 @@
+{
+  "name": "codex-cli-proxy",
+  "version": "1.0.0",
+  "description": "Production-grade API proxy for Codex CLI — supports Anthropic Messages API and OpenAI Chat Completions",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "codex-proxy": "dist/index.js",
+    "claude-proxy": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "@types/node": "^22.0.0"
+  }
+}
