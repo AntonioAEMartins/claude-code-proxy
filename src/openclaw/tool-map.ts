@@ -10,6 +10,7 @@
  */
 
 import type { AnthropicToolDefinition } from '../protocol/anthropic-types.js';
+import { logger } from '../util/logger.js';
 
 const OPENCLAW_TO_CLAUDE: Record<string, string> = {
   exec: 'Bash',
@@ -19,7 +20,6 @@ const OPENCLAW_TO_CLAUDE: Record<string, string> = {
   web_search: 'WebSearch',
   web_fetch: 'WebFetch',
   browser: 'Browser',
-  process: 'Bash',
   canvas: 'Canvas',
 };
 
@@ -41,8 +41,16 @@ export function mapToolDefinitions(
 ): { mappedTools: AnthropicToolDefinition[]; reverseToolMap: Record<string, string> } {
   const reverseToolMap: Record<string, string> = {};
 
+  const seenNames = new Map<string, string>();
+
   const mappedTools = tools.map(tool => {
     const mapped = mapToolName(tool.name);
+    const previous = seenNames.get(mapped);
+    if (previous) {
+      logger.warn(`Tool name collision: "${tool.name}" and "${previous}" both map to "${mapped}". Skipping "${tool.name}" to avoid overwrite.`);
+      return { ...tool };
+    }
+    seenNames.set(mapped, tool.name);
     if (mapped !== tool.name) {
       reverseToolMap[mapped] = tool.name;
     }
