@@ -250,7 +250,6 @@ Client tool names are mapped to Claude Code equivalents for better model perform
 | `web_search` | `WebSearch` |
 | `web_fetch` | `WebFetch` |
 | `browser` | `Browser` |
-| `process` | `Bash` |
 | `canvas` | `Canvas` |
 
 Tool names are mapped forward in requests and reverse-mapped in responses so clients see their original names.
