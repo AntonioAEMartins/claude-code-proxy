@@ -194,6 +194,20 @@ All settings are environment variables:
 | `GET` | `/v1/models` | List available models |
 | `GET` | `/health` | Health check |
 
+## Rate Limit Headers
+
+On non-streaming responses, the proxy forwards quota information from the Claude CLI as standard HTTP headers. These originate from Anthropic's own `anthropic-ratelimit-*` headers, surfaced by the CLI in its output stream.
+
+| Header | Format | Description |
+|--------|--------|-------------|
+| `x-ratelimit-limit` | Integer (e.g. `1000`) | Maximum requests/tokens allowed in the current window |
+| `x-ratelimit-remaining` | Integer (e.g. `999`) | Quota units remaining. Token values are rounded to the nearest thousand by Anthropic |
+| `x-ratelimit-reset` | RFC 3339 timestamp (e.g. `2026-03-19T15:30:00Z`) | When the current rate limit window fully replenishes |
+
+On `429` errors, `x-ratelimit-reset` is always set in the response header. For streaming responses, these headers cannot be set after the stream has started — the reset time is included in the SSE error event body (`reset_at` field) instead.
+
+All three headers are included in `Access-Control-Expose-Headers` for browser clients.
+
 ## How It Works
 
 Each API request spawns a fresh `claude --print` subprocess. The proxy translates between API formats and CLI I/O:

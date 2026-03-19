@@ -226,6 +226,23 @@ Types are defined in `src/protocol/cli-types.ts`.
 
 Errors are formatted as Anthropic `{type:"error",error:{type,message}}` for `/v1/messages` and OpenAI `{error:{message,type,code}}` for `/v1/chat/completions`.
 
+## Rate Limit Response Headers
+
+The proxy forwards quota information from the CLI's `rate_limit_event` as standard HTTP response headers. These values originate from Anthropic's own `anthropic-ratelimit-*` headers, which the CLI surfaces in its NDJSON event stream.
+
+| Header | Type | Format | Description |
+|---|---|---|---|
+| `x-ratelimit-limit` | Integer | e.g. `1000` | Maximum requests (or tokens) allowed in the current rate limit window |
+| `x-ratelimit-remaining` | Integer | e.g. `999` | Quota units remaining in the current window. Token values are rounded to the nearest thousand by Anthropic |
+| `x-ratelimit-reset` | String | RFC 3339 timestamp, e.g. `2026-03-19T15:30:00Z` | When the current rate limit window fully replenishes |
+
+**Availability:**
+- **Non-streaming responses** (200 OK): all three headers are set when the CLI provides rate limit info.
+- **Streaming responses** (SSE): headers cannot be set after the stream starts. On a rate-limit error during streaming, `reset_at` is included in the SSE error event body instead.
+- **429 errors**: `x-ratelimit-reset` is always set. `x-ratelimit-limit` and `x-ratelimit-remaining` are set if the CLI provides them in the `rate_limit_event`.
+
+All three headers are listed in `Access-Control-Expose-Headers` so browser clients can read them.
+
 ## Unsupported Parameters
 
 These are accepted but ignored (a `x-proxy-unsupported` response header lists them):
