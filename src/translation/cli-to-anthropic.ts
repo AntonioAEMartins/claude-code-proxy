@@ -1,4 +1,4 @@
-import type { CliEvent } from '../protocol/cli-types.js';
+import type { CliEvent, RateLimitInfo } from '../protocol/cli-types.js';
 import type { AnthropicMessagesResponse, AnthropicResponseContentBlock, AnthropicUsage } from '../protocol/anthropic-types.js';
 import { logger } from '../util/logger.js';
 import { serverError, rateLimited } from '../util/errors.js';
@@ -7,11 +7,16 @@ import { stripMcpToolPrefix } from '../tools/tool-translator.js';
 /**
  * Collect all CLI events and build a non-streaming Anthropic Messages response.
  */
+export interface AnthropicCollectResult {
+  response: AnthropicMessagesResponse;
+  rateLimitInfo?: RateLimitInfo;
+}
+
 export async function collectAnthropicResponse(
   events: AsyncGenerator<CliEvent>,
   enableThinking: boolean,
   reverseToolMap?: Record<string, string>,
-): Promise<AnthropicMessagesResponse> {
+): Promise<AnthropicCollectResult> {
   let messageId = '';
   let model = '';
   let stopReason: AnthropicMessagesResponse['stop_reason'] = null;
@@ -20,6 +25,7 @@ export async function collectAnthropicResponse(
   let usage: AnthropicUsage = { input_tokens: 0, output_tokens: 0 };
   let hasResult = false;
   let sawToolUseStop = false;
+  let rateLimitInfo: RateLimitInfo | undefined;
   // Track partial JSON accumulation for tool_use blocks by index
   const partialJsonByIndex = new Map<number, string>();
 
@@ -134,6 +140,11 @@ export async function collectAnthropicResponse(
             event.rate_limit_info.reset,
           );
         }
+        rateLimitInfo = {
+          limit: event.rate_limit_info.limit,
+          remaining: event.rate_limit_info.remaining,
+          reset: event.rate_limit_info.reset,
+        };
         break;
       }
 
@@ -154,13 +165,16 @@ export async function collectAnthropicResponse(
   const filteredContent = contentBlocks.filter((b): b is AnthropicResponseContentBlock => b != null);
 
   return {
-    id: messageId || `msg_${crypto.randomUUID().replace(/-/g, '')}`,
-    type: 'message',
-    role: 'assistant',
-    content: filteredContent,
-    model: model || 'unknown',
-    stop_reason: stopReason || 'end_turn',
-    stop_sequence: stopSequence,
-    usage,
+    response: {
+      id: messageId || `msg_${crypto.randomUUID().replace(/-/g, '')}`,
+      type: 'message',
+      role: 'assistant',
+      content: filteredContent,
+      model: model || 'unknown',
+      stop_reason: stopReason || 'end_turn',
+      stop_sequence: stopSequence,
+      usage,
+    },
+    rateLimitInfo,
   };
 }

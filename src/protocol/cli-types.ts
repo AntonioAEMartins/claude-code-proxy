@@ -161,6 +161,12 @@ export interface CliStreamEvent {
   session_id: string;
 }
 
+export interface RateLimitInfo {
+  limit?: number;
+  remaining?: number;
+  reset?: string;
+}
+
 export interface CliRateLimitEvent {
   type: 'rate_limit_event';
   rate_limit_info: {
