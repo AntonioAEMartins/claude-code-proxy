@@ -131,6 +131,7 @@ export async function collectAnthropicResponse(
         if (event.rate_limit_info.status !== 'allowed') {
           throw rateLimited(
             event.rate_limit_info.message || 'Rate limit exceeded',
+            event.rate_limit_info.reset,
           );
         }
         break;

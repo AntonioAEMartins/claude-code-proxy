@@ -86,12 +86,12 @@ export async function* cliToAnthropicSSE(
       case 'rate_limit_event': {
         if (event.rate_limit_info.status !== 'allowed') {
           logger.warn('Rate limited by CLI', { info: event.rate_limit_info });
-          // Emit an error event in the stream
           const errorEvent = {
             type: 'error' as const,
             error: {
               type: 'rate_limit_error',
               message: event.rate_limit_info.message || 'Rate limit exceeded',
+              reset_at: event.rate_limit_info.reset,
             },
           };
           yield `event: error\ndata: ${JSON.stringify(errorEvent)}\n\n`;
