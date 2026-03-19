@@ -125,8 +125,8 @@ export function sendError(res: ServerResponse, err: unknown, format: ApiFormat =
     ? apiError.toAnthropicError()
     : apiError.toOpenAIError();
 
-  if (apiError.statusCode === 429 && 'retryAfter' in apiError && typeof apiError.retryAfter === 'number') {
-    res.setHeader('retry-after', String(apiError.retryAfter));
+  if (apiError.statusCode === 429 && 'resetAt' in apiError && typeof apiError.resetAt === 'string') {
+    res.setHeader('x-ratelimit-reset', apiError.resetAt);
   }
 
   res.writeHead(apiError.statusCode, { 'Content-Type': 'application/json' });

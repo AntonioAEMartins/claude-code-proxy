@@ -41,9 +41,9 @@ export function notFound(message: string = 'Not found'): ApiError {
   return new ApiError(404, 'not_found_error', message);
 }
 
-export function rateLimited(message: string, retryAfterSeconds?: number): ApiError & { retryAfter?: number } {
-  const err = new ApiError(429, 'rate_limit_error', message) as ApiError & { retryAfter?: number };
-  err.retryAfter = retryAfterSeconds;
+export function rateLimited(message: string, resetAt?: string): ApiError & { resetAt?: string } {
+  const err = new ApiError(429, 'rate_limit_error', message) as ApiError & { resetAt?: string };
+  err.resetAt = resetAt;
   return err;
 }
 

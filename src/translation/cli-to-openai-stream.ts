@@ -41,6 +41,20 @@ export async function* cliToOpenAISSE(
       if (event.type === 'result' && event.subtype === 'error') {
         logger.error('CLI error in OpenAI stream', { result: event.result });
       }
+      if (event.type === 'rate_limit_event' && event.rate_limit_info.status !== 'allowed') {
+        logger.warn('Rate limited by CLI', { info: event.rate_limit_info });
+        const errorPayload = {
+          error: {
+            message: event.rate_limit_info.message || 'Rate limit exceeded',
+            type: 'rate_limit_error',
+            code: '429',
+            reset_at: event.rate_limit_info.reset,
+          },
+        };
+        yield `data: ${JSON.stringify(errorPayload)}\n\n`;
+        yield 'data: [DONE]\n\n';
+        return;
+      }
       continue;
     }
 
