@@ -86,6 +86,7 @@ export interface AnthropicMessagesRequest {
     user_id?: string;
     effort?: string;
     json_schema?: Record<string, unknown>;
+    mcp_servers?: string[];
   };
 }
 

@@ -169,6 +169,12 @@ export async function handleChatCompletions(
   const effortHeader = req.headers['x-effort'];
   const effort = typeof effortHeader === 'string' ? effortHeader : undefined;
 
+  // Get MCP server names from custom header
+  const mcpServersHeader = req.headers['x-mcp-servers'];
+  const mcpServerNames = typeof mcpServersHeader === 'string'
+    ? mcpServersHeader.split(',').map(s => s.trim()).filter(Boolean)
+    : undefined;
+
   // Build Anthropic-format request for the translation pipeline
   const anthropicRequest: AnthropicMessagesRequest = {
     model: body.model,
@@ -177,7 +183,7 @@ export async function handleChatCompletions(
     system: filteredSystem,
     tools,
     tool_choice: toolChoice,
-    metadata: { effort },
+    metadata: { effort, mcp_servers: mcpServerNames },
   };
 
   // Handle response_format for structured output
@@ -189,7 +195,7 @@ export async function handleChatCompletions(
   }
 
   const cliArgs = translateAnthropicRequest(anthropicRequest);
-  const { args, prompt } = buildArgs(cliArgs, config);
+  const { args, prompt, extraEnv } = buildArgs(cliArgs, config);
 
   logger.debug('Spawning CLI for OpenAI request', {
     model: body.model,
@@ -197,7 +203,7 @@ export async function handleChatCompletions(
     messageCount: body.messages.length,
   });
 
-  const { events, kill } = spawnCli(args, prompt, config.requestTimeoutMs);
+  const { events, kill } = spawnCli(args, prompt, config.requestTimeoutMs, extraEnv);
 
   req.on('close', () => {
     logger.debug('Client disconnected, killing CLI process');

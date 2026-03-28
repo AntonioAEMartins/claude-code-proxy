@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createServer } from './server/app.js';
-import { loadConfig } from './config.js';
+import { loadConfig, loadMcpServers } from './config.js';
 import { setLogLevel, logger } from './util/logger.js';
 import { spawnSync } from 'node:child_process';
 
@@ -42,6 +42,13 @@ async function main(): Promise<void> {
   });
 
   verifyClaude(config.claudePath);
+
+  // Load MCP server registry if configured
+  if (config.mcpConfigPath) {
+    config.mcpServers = loadMcpServers(config.mcpConfigPath);
+    const serverNames = Object.keys(config.mcpServers);
+    logger.info('MCP servers registered', { servers: serverNames });
+  }
 
   const server = createServer(config);
 

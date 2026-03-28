@@ -9,7 +9,7 @@ export interface SubprocessResult {
   process: ChildProcess;
 }
 
-export function spawnCli(args: string[], prompt: string, timeoutMs: number): SubprocessResult {
+export function spawnCli(args: string[], prompt: string, timeoutMs: number, extraEnv?: Record<string, string>): SubprocessResult {
   const command = args[0];
   const spawnArgs = args.slice(1);
 
@@ -28,6 +28,7 @@ export function spawnCli(args: string[], prompt: string, timeoutMs: number): Sub
       XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
       XDG_DATA_HOME: process.env.XDG_DATA_HOME,
       CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
+      ...extraEnv,
     },
   });
 

@@ -184,6 +184,48 @@ All settings are environment variables:
 | `REQUEST_TIMEOUT_MS` | `300000` | Request timeout (5 min) |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 | `ENABLE_THINKING` | `false` | Include thinking blocks |
+| `PROXY_MCP_CONFIG` | — | Path to MCP server registry JSON file |
+
+## MCP Server Registry
+
+Optionally expose pre-registered MCP servers (e.g., Neon, Supabase) to API clients. Credentials stay server-side; clients activate servers by name.
+
+**1. Create a config file** (`mcp-servers.json`):
+
+```json
+{
+  "mcpServers": {
+    "neon": {
+      "command": "npx",
+      "args": ["-y", "@neondatabase/mcp-server-neon"],
+      "env": { "NEON_API_KEY": "your-key-here" }
+    }
+  }
+}
+```
+
+**2. Start the proxy:**
+
+```bash
+PROXY_MCP_CONFIG=./mcp-servers.json claude-proxy
+```
+
+**3. Activate per request:**
+
+```bash
+# Anthropic format — metadata.mcp_servers
+curl -X POST http://localhost:4523/v1/messages \
+  -H "Content-Type: application/json" \
+  -d '{"model":"sonnet","max_tokens":1024,"metadata":{"mcp_servers":["neon"]},"messages":[{"role":"user","content":"List my database tables"}]}'
+
+# OpenAI format — x-mcp-servers header
+curl -X POST http://localhost:4523/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "x-mcp-servers: neon" \
+  -d '{"model":"sonnet","messages":[{"role":"user","content":"List my database tables"}]}'
+```
+
+Without `PROXY_MCP_CONFIG`, behavior is unchanged (full MCP isolation). Without `mcp_servers` in a request, no registry servers are activated.
 
 ## API Endpoints
 
