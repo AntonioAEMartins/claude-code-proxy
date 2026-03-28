@@ -84,7 +84,7 @@ export function checkAuth(req: IncomingMessage, config: Config): void {
 export function setCorsHeaders(res: ServerResponse): void {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, anthropic-version, anthropic-beta, x-effort');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, anthropic-version, anthropic-beta, x-effort, x-mcp-servers');
   res.setHeader('Access-Control-Expose-Headers', 'x-proxy-unsupported, x-ratelimit-limit, x-ratelimit-remaining, x-ratelimit-reset');
 }
 

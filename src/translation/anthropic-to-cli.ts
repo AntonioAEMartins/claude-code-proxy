@@ -117,6 +117,7 @@ export function translateAnthropicRequest(request: AnthropicMessagesRequest): Cl
     effort: request.metadata?.effort,
     jsonSchema: request.metadata?.json_schema,
     mcpConfig,
+    mcpServerNames: request.metadata?.mcp_servers,
     enableThinking: false, // Will be set by the route handler based on config/headers
   };
 }

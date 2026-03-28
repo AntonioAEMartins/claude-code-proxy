@@ -148,6 +148,50 @@ src/
 | `REQUEST_TIMEOUT_MS` | `300000` | Per-request timeout (5 min) |
 | `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
 | `ENABLE_THINKING` | `false` | Include thinking blocks in responses |
+| `PROXY_MCP_CONFIG` | *(none)* | Path to MCP server registry JSON file |
+
+## MCP Server Registry
+
+The proxy can expose pre-registered MCP servers to API clients on a per-request basis. Credentials stay server-side; clients only reference servers by name.
+
+### Setup
+
+Set `PROXY_MCP_CONFIG` to a JSON file path:
+
+```bash
+PROXY_MCP_CONFIG=./mcp-servers.json claude-proxy
+```
+
+File format (same schema as Claude CLI):
+```json
+{
+  "mcpServers": {
+    "neon": {
+      "command": "npx",
+      "args": ["-y", "@neondatabase/mcp-server-neon"],
+      "env": { "NEON_API_KEY": "neon_abc123" }
+    }
+  }
+}
+```
+
+### Per-Request Activation
+
+**Anthropic format** — `metadata.mcp_servers`:
+```json
+{ "metadata": { "mcp_servers": ["neon"] } }
+```
+
+**OpenAI format** — `x-mcp-servers` header:
+```
+x-mcp-servers: neon
+```
+
+Requesting an unknown server name returns a 400 error. Without `mcp_servers`, no registry servers are activated (full isolation, same as before).
+
+### Tool Names
+
+Registry server tools arrive with `mcp__<server>__` prefix (e.g., `mcp__neon__query`). This prefix is preserved in responses so clients can distinguish tools from different servers.
 
 ## API Endpoints
 
