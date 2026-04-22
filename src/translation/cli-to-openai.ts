@@ -1,4 +1,4 @@
-import type { CliEvent } from '../protocol/cli-types.js';
+import type { CliEvent, RateLimitInfo } from '../protocol/cli-types.js';
 import type { OpenAIChatCompletionResponse, OpenAIToolCall, OpenAICompletionUsage } from '../protocol/openai-types.js';
 import { logger } from '../util/logger.js';
 import { serverError, rateLimited } from '../util/errors.js';
@@ -14,10 +14,15 @@ interface AccumulatedToolCall {
  * Collect all CLI events and build a non-streaming OpenAI Chat Completion response.
  * @param reverseToolMap - Optional map to translate CLI tool names back to client names
  */
+export interface OpenAICollectResult {
+  response: OpenAIChatCompletionResponse;
+  rateLimitInfo?: RateLimitInfo;
+}
+
 export async function collectOpenAIResponse(
   events: AsyncGenerator<CliEvent>,
   reverseToolMap?: Record<string, string>,
-): Promise<OpenAIChatCompletionResponse> {
+): Promise<OpenAICollectResult> {
   let messageId = '';
   let model = '';
   let textContent = '';
@@ -26,6 +31,7 @@ export async function collectOpenAIResponse(
   let currentToolCallIndex = -1;
   let usage: OpenAICompletionUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
   let sawToolUseStop = false;
+  let rateLimitInfo: RateLimitInfo | undefined;
 
   eventLoop: for await (const event of events) {
     switch (event.type) {
@@ -100,6 +106,11 @@ export async function collectOpenAIResponse(
             event.rate_limit_info.reset,
           );
         }
+        rateLimitInfo = {
+          limit: event.rate_limit_info.limit,
+          remaining: event.rate_limit_info.remaining,
+          reset: event.rate_limit_info.reset,
+        };
         break;
       }
 
@@ -126,20 +137,23 @@ export async function collectOpenAIResponse(
       : undefined;
 
   return {
-    id: messageId || `chatcmpl-${crypto.randomUUID().replace(/-/g, '')}`,
-    object: 'chat.completion',
-    created: Math.floor(Date.now() / 1000),
-    model: model || 'unknown',
-    choices: [{
-      index: 0,
-      message: {
-        role: 'assistant',
-        content: textContent || null,
-        tool_calls: openaiToolCalls,
-      },
-      finish_reason: finishReason || 'stop',
-    }],
-    usage,
-    system_fingerprint: null,
+    response: {
+      id: messageId || `chatcmpl-${crypto.randomUUID().replace(/-/g, '')}`,
+      object: 'chat.completion',
+      created: Math.floor(Date.now() / 1000),
+      model: model || 'unknown',
+      choices: [{
+        index: 0,
+        message: {
+          role: 'assistant',
+          content: textContent || null,
+          tool_calls: openaiToolCalls,
+        },
+        finish_reason: finishReason || 'stop',
+      }],
+      usage,
+      system_fingerprint: null,
+    },
+    rateLimitInfo,
   };
 }

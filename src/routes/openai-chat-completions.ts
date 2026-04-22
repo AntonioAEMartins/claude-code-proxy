@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Config } from '../config.js';
 import type { OpenAIChatCompletionRequest, OpenAIChatMessage } from '../protocol/openai-types.js';
 import type { AnthropicMessagesRequest, AnthropicMessage, AnthropicContentBlock, AnthropicToolDefinition, AnthropicToolChoice } from '../protocol/anthropic-types.js';
-import { parseJsonBody, addUnsupportedWarnings } from '../server/middleware.js';
+import { parseJsonBody, addUnsupportedWarnings, setRateLimitHeaders } from '../server/middleware.js';
 import { translateAnthropicRequest } from '../translation/anthropic-to-cli.js';
 import { buildArgs } from '../cli/args-builder.js';
 import { spawnCli } from '../cli/subprocess.js';
@@ -246,9 +246,10 @@ export async function handleChatCompletions(
     }
   } else {
     try {
-      const result = await collectOpenAIResponse(events, reverseToolMap);
+      const { response, rateLimitInfo } = await collectOpenAIResponse(events, reverseToolMap);
+      if (rateLimitInfo) setRateLimitHeaders(res, rateLimitInfo);
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(result));
+      res.end(JSON.stringify(response));
     } catch (err) {
       kill();
       throw err;

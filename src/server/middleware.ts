@@ -134,6 +134,18 @@ export function sendError(res: ServerResponse, err: unknown, format: ApiFormat =
 }
 
 /**
+ * Set x-ratelimit-* headers from rate limit info returned by the CLI.
+ */
+export function setRateLimitHeaders(
+  res: ServerResponse,
+  info: { limit?: number; remaining?: number; reset?: string },
+): void {
+  if (info.limit !== undefined) res.setHeader('x-ratelimit-limit', String(info.limit));
+  if (info.remaining !== undefined) res.setHeader('x-ratelimit-remaining', String(info.remaining));
+  if (info.reset !== undefined) res.setHeader('x-ratelimit-reset', info.reset);
+}
+
+/**
  * Add warning headers for unsupported parameters.
  */
 export function addUnsupportedWarnings(res: ServerResponse, params: string[]): void {
