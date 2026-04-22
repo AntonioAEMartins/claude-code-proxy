@@ -1,41 +1,13 @@
 import { badRequest } from '../util/errors.js';
-import { logger } from '../util/logger.js';
-
-const MODEL_ALIASES: Record<string, string> = {
-  // Opus aliases
-  'claude-opus-4-6': 'opus',
-  'claude-opus-4': 'opus',
-  'opus': 'opus',
-  'opus-4': 'opus',
-  'opus-4-6': 'opus',
-  // Sonnet aliases
-  'claude-sonnet-4-6': 'sonnet',
-  'claude-sonnet-4': 'sonnet',
-  'sonnet': 'sonnet',
-  'sonnet-4': 'sonnet',
-  'sonnet-4-6': 'sonnet',
-  // Haiku aliases
-  'claude-haiku-4-5': 'haiku',
-  'claude-haiku-4': 'haiku',
-  'haiku': 'haiku',
-  'haiku-4': 'haiku',
-  'haiku-4-5': 'haiku',
-};
 
 /**
- * Prefixes that are stripped before model alias lookup.
+ * Prefixes that are stripped before model family lookup.
  * Allows clients like OpenClaw to send e.g. "claude-code-cli/opus".
  */
 const STRIP_PREFIXES = ['claude-code-cli/', 'openai/'];
+const FAMILY_REGEX = /^(?:claude-)?(opus|sonnet|haiku)(?:[-/].*)?$/i;
 
-// Map CLI model names back to full Anthropic model IDs for responses
-const CLI_TO_API_MODEL: Record<string, string> = {
-  'opus': 'claude-opus-4-6',
-  'sonnet': 'claude-sonnet-4-6',
-  'haiku': 'claude-haiku-4-5',
-};
-
-// Effort level constraints per model
+// Effort level constraints per model family
 const EFFORT_BY_MODEL: Record<string, string[]> = {
   opus: ['low', 'medium', 'high', 'max'],
   sonnet: ['low', 'medium', 'high'],
@@ -55,29 +27,28 @@ function stripModelPrefix(model: string): string {
   return model;
 }
 
-export function toCliModel(model: string, defaultCliModel?: string): string {
-  const stripped = stripModelPrefix(model);
-  const normalized = MODEL_ALIASES[stripped];
-  if (normalized) return normalized;
-
-  // Unknown model — fall back to default if provided
-  if (defaultCliModel) {
-    const fallback = MODEL_ALIASES[defaultCliModel] || defaultCliModel;
-    logger.warn(`Unknown model "${model}", falling back to "${fallback}"`);
-    return fallback;
-  }
-
-  throw badRequest(`Unknown model: ${model}. Supported models: ${Object.keys(MODEL_ALIASES).join(', ')}`);
+function resolveFamily(model: string): 'opus' | 'sonnet' | 'haiku' | null {
+  const match = FAMILY_REGEX.exec(model);
+  return match ? (match[1].toLowerCase() as 'opus' | 'sonnet' | 'haiku') : null;
 }
 
-export function toApiModel(cliModel: string): string {
-  return CLI_TO_API_MODEL[cliModel] || cliModel;
+export function toCliModel(model: string): string {
+  const stripped = stripModelPrefix(model);
+  const family = resolveFamily(stripped);
+  if (family) {
+    return family;
+  }
+
+  throw badRequest(
+    `Unknown model: "${model}". Supported families: opus, sonnet, haiku ` +
+    `(e.g. "opus", "claude-opus-4-7", "sonnet", "haiku-4-5").`
+  );
 }
 
 export function validateEffort(model: string, effort: string | undefined, defaultEffort: string): string | null {
   const stripped = stripModelPrefix(model);
-  const cliModel = MODEL_ALIASES[stripped] || stripped;
-  const allowed = EFFORT_BY_MODEL[cliModel];
+  const family = resolveFamily(stripped);
+  const allowed = family ? EFFORT_BY_MODEL[family] : undefined;
 
   if (!allowed || allowed.length === 0) {
     return null; // Model doesn't support effort

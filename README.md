@@ -115,7 +115,7 @@ Any tool with a "custom base URL" or "OpenAI-compatible" setting works:
 | **LiteLLM** | `api_base="http://localhost:4523/v1"` |
 | **OpenClaw** | `OPENAI_BASE_URL=http://host.docker.internal:4523/v1` |
 
-Use `claude-sonnet-4-6`, `claude-opus-4-6`, or `claude-haiku-4-5` as the model name (shorter aliases like `sonnet`, `opus`, `haiku` also work). Model names with a `claude-code-cli/` or `openai/` prefix are also accepted (the prefix is stripped automatically). Unknown models fall back to the `DEFAULT_MODEL`.
+Use any `sonnet`, `opus`, or `haiku` family name as the model, including versioned variants like `claude-sonnet-4-6`, `claude-opus-4-7`, `sonnet-4-7`, or `haiku-5`. Model names with a `claude-code-cli/` or `openai/` prefix are also accepted (the prefix is stripped automatically). Unknown model families return HTTP 400 instead of falling back to the `DEFAULT_MODEL`.
 
 ## Streaming
 
@@ -149,11 +149,11 @@ for await (const chunk of stream) {
 
 ## Available Models
 
-| Model Name | Aliases |
+| Family advertised at `/v1/models` | Accepted examples |
 |-----------|---------|
-| `claude-opus-4-6` | `claude-opus-4`, `opus` |
-| `claude-sonnet-4-6` | `claude-sonnet-4`, `sonnet` |
-| `claude-haiku-4-5` | `claude-haiku-4`, `haiku` |
+| `claude-opus-4-6` | `opus`, `claude-opus-4-6`, `claude-opus-4-7`, `opus-5` |
+| `claude-sonnet-4-6` | `sonnet`, `claude-sonnet-4-6`, `sonnet-4-7` |
+| `claude-haiku-4-5` | `haiku`, `claude-haiku-4-5`, `haiku-5` |
 
 ## Features
 
@@ -179,7 +179,7 @@ All settings are environment variables:
 | `PROXY_API_KEYS` | — | Comma-separated API keys for auth |
 | `REQUIRE_AUTH` | `true` | Set `false` for local use |
 | `CLAUDE_PATH` | `claude` | Path to Claude CLI |
-| `DEFAULT_MODEL` | `sonnet` | Model when not specified |
+| `DEFAULT_MODEL` | `sonnet` | Reserved default model setting; unknown request models now return 400 |
 | `DEFAULT_EFFORT` | `high` | Default effort level |
 | `REQUEST_TIMEOUT_MS` | `300000` | Request timeout (5 min) |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |

@@ -105,7 +105,7 @@ src/
 - `src/translation/anthropic-to-cli.ts` — `messagesToPrompt()` flattens the messages array into a single string. Multi-turn uses `<assistant_response>` and `<tool_result>` XML tags.
 
 ### "I need to add/change a model"
-- `src/translation/model-map.ts` — `MODEL_ALIASES` maps all accepted names to CLI model names. `EFFORT_BY_MODEL` defines effort constraints per model. `CLI_TO_API_MODEL` maps back for responses.
+- `src/translation/model-map.ts` — model names resolve by family prefix (`opus`, `sonnet`, `haiku`) after stripping known wrappers like `claude-code-cli/` and `openai/`. `EFFORT_BY_MODEL` defines effort constraints per family.
 
 ### "I need to change how responses are translated"
 - Anthropic streaming: `src/translation/cli-to-anthropic-stream.ts` — near pass-through of CLI `stream_event` inner events
@@ -143,7 +143,7 @@ src/
 | `PROXY_API_KEYS` | *(none)* | Comma-separated bearer tokens |
 | `REQUIRE_AUTH` | `true` | Set `false` to disable auth |
 | `CLAUDE_PATH` | `claude` | Path to Claude CLI binary |
-| `DEFAULT_MODEL` | `sonnet` | Fallback model |
+| `DEFAULT_MODEL` | `sonnet` | Reserved default model setting; unknown request models now return 400 |
 | `DEFAULT_EFFORT` | `high` | Default effort level |
 | `REQUEST_TIMEOUT_MS` | `300000` | Per-request timeout (5 min) |
 | `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
@@ -160,15 +160,15 @@ src/
 
 ## Model Names
 
-Any of these are accepted in the `model` field:
+Accepted model names resolve by family prefix. The proxy strips `claude-code-cli/` and `openai/`, then matches `opus`, `sonnet`, or `haiku` with any optional suffix.
 
-| Aliases | CLI Model | Response Model ID |
+| Examples Accepted | CLI Model | `/v1/models` ID |
 |---|---|---|
-| `claude-opus-4-6`, `claude-opus-4`, `opus`, `opus-4`, `opus-4-6` | `opus` | `claude-opus-4-6` |
-| `claude-sonnet-4-6`, `claude-sonnet-4`, `sonnet`, `sonnet-4`, `sonnet-4-6` | `sonnet` | `claude-sonnet-4-6` |
-| `claude-haiku-4-5`, `claude-haiku-4`, `haiku`, `haiku-4`, `haiku-4-5` | `haiku` | `claude-haiku-4-5` |
+| `opus`, `claude-opus-4-6`, `claude-opus-4-7`, `opus-5` | `opus` | `claude-opus-4-6` |
+| `sonnet`, `claude-sonnet-4-6`, `sonnet-4-7` | `sonnet` | `claude-sonnet-4-6` |
+| `haiku`, `claude-haiku-4-5`, `haiku-5` | `haiku` | `claude-haiku-4-5` |
 
-Model names with the `claude-code-cli/` or `openai/` prefix are also accepted (the prefix is stripped before lookup). Unknown models fall back to `DEFAULT_MODEL`.
+Model names with the `claude-code-cli/` or `openai/` prefix are also accepted (the prefix is stripped before lookup). Unknown model families return HTTP 400 instead of falling back to `DEFAULT_MODEL`.
 
 ## Effort Levels
 

@@ -24,7 +24,7 @@ export interface BuiltCliCommand {
 }
 
 export function buildArgs(cliArgs: CliArgs, config: Config): BuiltCliCommand {
-  const cliModel = toCliModel(cliArgs.model, config.defaultModel);
+  const cliModel = toCliModel(cliArgs.model);
 
   const args: string[] = [
     config.claudePath,
