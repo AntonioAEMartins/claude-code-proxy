@@ -29,7 +29,14 @@ export async function collectOpenAIResponse(
   let finishReason: 'stop' | 'tool_calls' | 'length' | null = null;
   const toolCalls: AccumulatedToolCall[] = [];
   let currentToolCallIndex = -1;
-  let usage: OpenAICompletionUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+  let usage: OpenAICompletionUsage = {
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0,
+    cache_creation_input_tokens: 0,
+    cache_read_input_tokens: 0,
+    prompt_tokens_details: { cached_tokens: 0 },
+  };
   let sawToolUseStop = false;
   let rateLimitInfo: RateLimitInfo | undefined;
 
@@ -42,6 +49,11 @@ export async function collectOpenAIResponse(
           messageId = inner.message.id || `chatcmpl-${crypto.randomUUID().replace(/-/g, '')}`;
           model = inner.message.model || model;
           usage.prompt_tokens = inner.message.usage.input_tokens;
+          const cacheRead = inner.message.usage.cache_read_input_tokens ?? 0;
+          const cacheCreate = inner.message.usage.cache_creation_input_tokens ?? 0;
+          usage.cache_read_input_tokens = cacheRead;
+          usage.cache_creation_input_tokens = cacheCreate;
+          usage.prompt_tokens_details = { cached_tokens: cacheRead };
         }
 
         if (inner.type === 'content_block_start') {
@@ -95,6 +107,13 @@ export async function collectOpenAIResponse(
           usage.prompt_tokens = event.usage.input_tokens;
           usage.completion_tokens = event.usage.output_tokens;
           usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
+          if (event.usage.cache_read_input_tokens !== undefined) {
+            usage.cache_read_input_tokens = event.usage.cache_read_input_tokens;
+            usage.prompt_tokens_details = { cached_tokens: event.usage.cache_read_input_tokens };
+          }
+          if (event.usage.cache_creation_input_tokens !== undefined) {
+            usage.cache_creation_input_tokens = event.usage.cache_creation_input_tokens;
+          }
         }
         break;
       }

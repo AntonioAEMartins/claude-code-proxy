@@ -96,10 +96,17 @@ export interface OpenAIChoice {
   finish_reason: 'stop' | 'tool_calls' | 'length' | 'content_filter' | null;
 }
 
+export interface OpenAIPromptTokensDetails {
+  cached_tokens?: number;
+}
+
 export interface OpenAICompletionUsage {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  prompt_tokens_details?: OpenAIPromptTokensDetails;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
 }
 
 export interface OpenAIChatCompletionResponse {

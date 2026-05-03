@@ -287,6 +287,38 @@ The proxy forwards quota information from the CLI's `rate_limit_event` as standa
 
 All three headers are listed in `Access-Control-Expose-Headers` so browser clients can read them.
 
+## Usage Object — Cache Token Fields
+
+Both API surfaces forward Anthropic's `cache_creation_input_tokens` and `cache_read_input_tokens` from the CLI's `Usage` payload. Cold-cache requests report `0` rather than dropping the field, so the response shape is consistent on every call.
+
+**Anthropic `/v1/messages`** — fields land directly on `usage`:
+```json
+{
+  "usage": {
+    "input_tokens": 10,
+    "output_tokens": 50,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 8
+  }
+}
+```
+
+**OpenAI `/v1/chat/completions`** — `cache_read_input_tokens` is mirrored to the OpenAI-spec `prompt_tokens_details.cached_tokens`. The Anthropic-style keys are also surfaced so clients that grok them keep cache-creation visibility (OpenAI has no native field for cache-write tokens):
+```json
+{
+  "usage": {
+    "prompt_tokens": 10,
+    "completion_tokens": 50,
+    "total_tokens": 60,
+    "prompt_tokens_details": { "cached_tokens": 8 },
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 8
+  }
+}
+```
+
+Streaming responses already pass these fields through verbatim from the CLI's `stream_event` payloads.
+
 ## Unsupported Parameters
 
 These are accepted but ignored (a `x-proxy-unsupported` response header lists them):
