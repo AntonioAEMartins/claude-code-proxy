@@ -1,7 +1,8 @@
 import type { CliEvent } from '../protocol/cli-types.js';
-import type { OpenAIChatCompletionChunk } from '../protocol/openai-types.js';
+import type { OpenAIChatCompletionChunk, OpenAICompletionUsage } from '../protocol/openai-types.js';
 import { logger } from '../util/logger.js';
 import { stripMcpToolPrefix } from '../tools/tool-translator.js';
+import { updateUsageFromEvent } from './cli-to-openai.js';
 
 function makeChunk(
   id: string,
@@ -19,21 +20,49 @@ function makeChunk(
   };
 }
 
+function makeUsageChunk(
+  id: string,
+  model: string,
+  usage: OpenAICompletionUsage,
+): OpenAIChatCompletionChunk {
+  return {
+    id,
+    object: 'chat.completion.chunk',
+    created: Math.floor(Date.now() / 1000),
+    model,
+    choices: [],
+    system_fingerprint: null,
+    usage,
+  };
+}
+
 /**
  * Transform CLI events into OpenAI SSE text chunks.
  * @param reverseToolMap - Optional map to translate CLI tool names back to client names
+ * @param includeUsage   - When true, emit a final chunk with empty `choices` and a populated
+ *                         `usage` object before `[DONE]`, per the OpenAI streaming contract for
+ *                         `stream_options.include_usage: true`. The chunk is suppressed on
+ *                         rate-limit errors, since those terminate the stream with an error event.
  */
 export async function* cliToOpenAISSE(
   events: AsyncGenerator<CliEvent>,
   reverseToolMap?: Record<string, string>,
+  includeUsage = false,
 ): AsyncGenerator<string> {
   let messageId = '';
   let model = '';
   let toolCallIndex = -1;
   let sentRole = false;
   let sawToolUseStop = false;
+  const usage: OpenAICompletionUsage = {
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0,
+  };
 
   for await (const event of events) {
+    updateUsageFromEvent(usage, event);
+
     if (event.type !== 'stream_event') {
       if (event.type === 'system') {
         model = event.model;
@@ -129,6 +158,9 @@ export async function* cliToOpenAISSE(
         // placeholder result — that garbage must never reach the client.
         if (sawToolUseStop) {
           logger.debug('Stopping stream after tool_use turn (intercepting MCP placeholder turn)');
+          if (includeUsage) {
+            yield `data: ${JSON.stringify(makeUsageChunk(messageId, model, usage))}\n\n`;
+          }
           yield 'data: [DONE]\n\n';
           return;
         }
@@ -143,5 +175,8 @@ export async function* cliToOpenAISSE(
     }
   }
 
+  if (includeUsage) {
+    yield `data: ${JSON.stringify(makeUsageChunk(messageId, model, usage))}\n\n`;
+  }
   yield 'data: [DONE]\n\n';
 }

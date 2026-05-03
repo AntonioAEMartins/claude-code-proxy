@@ -140,10 +140,13 @@ const stream = await client.chat.completions.create({
   model: "claude-sonnet-4",
   messages: [{ role: "user", content: "Write a haiku" }],
   stream: true,
+  // Optional: emit a final chunk with usage totals before [DONE].
+  stream_options: { include_usage: true },
 });
 
 for await (const chunk of stream) {
   process.stdout.write(chunk.choices[0]?.delta?.content || "");
+  if (chunk.usage) console.error("usage:", chunk.usage);
 }
 ```
 

@@ -22,7 +22,12 @@ export async function collectAnthropicResponse(
   let stopReason: AnthropicMessagesResponse['stop_reason'] = null;
   let stopSequence: string | null = null;
   const contentBlocks: AnthropicResponseContentBlock[] = [];
-  let usage: AnthropicUsage = { input_tokens: 0, output_tokens: 0 };
+  let usage: AnthropicUsage = {
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_creation_input_tokens: 0,
+    cache_read_input_tokens: 0,
+  };
   let hasResult = false;
   let sawToolUseStop = false;
   let rateLimitInfo: RateLimitInfo | undefined;
@@ -40,6 +45,8 @@ export async function collectAnthropicResponse(
           usage = {
             input_tokens: inner.message.usage.input_tokens,
             output_tokens: inner.message.usage.output_tokens,
+            cache_creation_input_tokens: inner.message.usage.cache_creation_input_tokens ?? 0,
+            cache_read_input_tokens: inner.message.usage.cache_read_input_tokens ?? 0,
           };
         }
 
@@ -129,6 +136,10 @@ export async function collectAnthropicResponse(
         if (event.subtype === 'success' && event.usage) {
           usage.input_tokens = event.usage.input_tokens;
           usage.output_tokens = event.usage.output_tokens;
+          usage.cache_creation_input_tokens =
+            event.usage.cache_creation_input_tokens ?? usage.cache_creation_input_tokens;
+          usage.cache_read_input_tokens =
+            event.usage.cache_read_input_tokens ?? usage.cache_read_input_tokens;
         }
         break;
       }
