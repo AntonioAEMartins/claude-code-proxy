@@ -101,10 +101,20 @@ export interface OpenAIChoice {
   finish_reason: 'stop' | 'tool_calls' | 'length' | 'content_filter' | null;
 }
 
+export interface OpenAIPromptTokensDetails {
+  cached_tokens: number;
+}
+
 export interface OpenAICompletionUsage {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  /** Tokens written to the prompt cache (Anthropic-style). Optional. */
+  cache_creation_input_tokens?: number;
+  /** Tokens served from the prompt cache (Anthropic-style). Optional. */
+  cache_read_input_tokens?: number;
+  /** OpenAI-shaped cache detail. `cached_tokens` mirrors `cache_read_input_tokens`. */
+  prompt_tokens_details?: OpenAIPromptTokensDetails;
 }
 
 export interface OpenAIChatCompletionResponse {
