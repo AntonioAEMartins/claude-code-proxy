@@ -295,6 +295,10 @@ These are accepted but ignored (a `x-proxy-unsupported` response header lists th
 - `frequency_penalty`, `presence_penalty` — OpenAI-specific, no equivalent
 - `n > 1` — only single completion supported
 
+## OpenAI Streaming Options
+
+`POST /v1/chat/completions` honors `stream_options.include_usage`. When `stream: true` and `stream_options: {include_usage: true}` are both set, the proxy emits one extra chunk with empty `choices` and a populated `usage` object immediately before `data: [DONE]`. Usage is suppressed only on rate-limit errors, where the SSE error event already terminates the stream. Only `include_usage` is honored — other fields under `stream_options` are ignored.
+
 ## OpenClaw Integration
 
 The proxy supports plug-and-play operation with [OpenClaw](https://github.com/AntonioAEMartins/claude-code-proxy/issues/3). The following features are applied automatically on OpenAI-format requests:

@@ -219,8 +219,10 @@ export async function handleChatCompletions(
     // SSE connection confirmation — lets clients know the stream is live
     res.write(':ok\n\n');
 
+    const includeUsage = body.stream_options?.include_usage === true;
+
     try {
-      for await (const chunk of cliToOpenAISSE(events, reverseToolMap)) {
+      for await (const chunk of cliToOpenAISSE(events, reverseToolMap, includeUsage)) {
         if (!res.writable) break;
         res.write(chunk);
       }

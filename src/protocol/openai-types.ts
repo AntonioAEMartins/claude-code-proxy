@@ -67,6 +67,10 @@ export interface OpenAIResponseFormat {
   };
 }
 
+export interface OpenAIStreamOptions {
+  include_usage?: boolean;
+}
+
 export interface OpenAIChatCompletionRequest {
   model: string;
   messages: OpenAIChatMessage[];
@@ -76,6 +80,7 @@ export interface OpenAIChatCompletionRequest {
   top_p?: number;
   n?: number;
   stream?: boolean;
+  stream_options?: OpenAIStreamOptions;
   stop?: string | string[];
   frequency_penalty?: number;
   presence_penalty?: number;
@@ -141,6 +146,8 @@ export interface OpenAIChatCompletionChunk {
   model: string;
   choices: OpenAIStreamChoice[];
   system_fingerprint: string | null;
+  /** Populated only on the optional final chunk when stream_options.include_usage is true. */
+  usage?: OpenAICompletionUsage;
 }
 
 // ── Models endpoint ──
