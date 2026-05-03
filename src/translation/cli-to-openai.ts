@@ -11,6 +11,29 @@ interface AccumulatedToolCall {
 }
 
 /**
+ * Update the running usage totals from a single CLI event. Mutates `usage` in place.
+ * Shared between the streaming and non-streaming OpenAI translators so the two paths
+ * report identical token counts for the same event sequence.
+ */
+export function updateUsageFromEvent(usage: OpenAICompletionUsage, event: CliEvent): void {
+  if (event.type === 'stream_event') {
+    const inner = event.event;
+    if (inner.type === 'message_start') {
+      usage.prompt_tokens = inner.message.usage.input_tokens;
+    } else if (inner.type === 'message_delta') {
+      usage.completion_tokens = inner.usage.output_tokens;
+      usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
+    }
+    return;
+  }
+  if (event.type === 'result' && event.subtype === 'success' && event.usage) {
+    usage.prompt_tokens = event.usage.input_tokens;
+    usage.completion_tokens = event.usage.output_tokens;
+    usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
+  }
+}
+
+/**
  * Collect all CLI events and build a non-streaming OpenAI Chat Completion response.
  * @param reverseToolMap - Optional map to translate CLI tool names back to client names
  */
@@ -34,6 +57,8 @@ export async function collectOpenAIResponse(
   let rateLimitInfo: RateLimitInfo | undefined;
 
   eventLoop: for await (const event of events) {
+    updateUsageFromEvent(usage, event);
+
     switch (event.type) {
       case 'stream_event': {
         const inner = event.event;
@@ -41,7 +66,6 @@ export async function collectOpenAIResponse(
         if (inner.type === 'message_start') {
           messageId = inner.message.id || `chatcmpl-${crypto.randomUUID().replace(/-/g, '')}`;
           model = inner.message.model || model;
-          usage.prompt_tokens = inner.message.usage.input_tokens;
         }
 
         if (inner.type === 'content_block_start') {
@@ -72,8 +96,6 @@ export async function collectOpenAIResponse(
           } else {
             finishReason = 'stop';
           }
-          usage.completion_tokens = inner.usage.output_tokens;
-          usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
         }
 
         // After message_stop for a tool_use turn, stop consuming events.
@@ -90,11 +112,6 @@ export async function collectOpenAIResponse(
       case 'result': {
         if (event.subtype === 'error') {
           throw serverError(event.result || 'CLI returned an error');
-        }
-        if (event.subtype === 'success' && event.usage) {
-          usage.prompt_tokens = event.usage.input_tokens;
-          usage.completion_tokens = event.usage.output_tokens;
-          usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
         }
         break;
       }
