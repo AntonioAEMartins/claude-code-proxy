@@ -1,4 +1,4 @@
-import type { CliEvent, RateLimitInfo } from '../protocol/cli-types.js';
+import type { CliEvent, RateLimitInfo, Usage } from '../protocol/cli-types.js';
 import type { OpenAIChatCompletionResponse, OpenAIToolCall, OpenAICompletionUsage } from '../protocol/openai-types.js';
 import { logger } from '../util/logger.js';
 import { serverError, rateLimited } from '../util/errors.js';
@@ -11,15 +11,41 @@ interface AccumulatedToolCall {
 }
 
 /**
+ * Build a fresh usage record initialized to zero, including the optional
+ * Anthropic-style cache fields and the OpenAI `prompt_tokens_details` mirror.
+ */
+export function makeEmptyUsage(): OpenAICompletionUsage {
+  return {
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0,
+    cache_creation_input_tokens: 0,
+    cache_read_input_tokens: 0,
+    prompt_tokens_details: { cached_tokens: 0 },
+  };
+}
+
+function applyCacheFields(usage: OpenAICompletionUsage, cliUsage: Usage): void {
+  if (cliUsage.cache_read_input_tokens !== undefined) {
+    usage.cache_read_input_tokens = cliUsage.cache_read_input_tokens;
+    usage.prompt_tokens_details = { cached_tokens: cliUsage.cache_read_input_tokens };
+  }
+  if (cliUsage.cache_creation_input_tokens !== undefined) {
+    usage.cache_creation_input_tokens = cliUsage.cache_creation_input_tokens;
+  }
+}
+
+/**
  * Update the running usage totals from a single CLI event. Mutates `usage` in place.
  * Shared between the streaming and non-streaming OpenAI translators so the two paths
- * report identical token counts for the same event sequence.
+ * report identical token counts (including cache fields) for the same event sequence.
  */
 export function updateUsageFromEvent(usage: OpenAICompletionUsage, event: CliEvent): void {
   if (event.type === 'stream_event') {
     const inner = event.event;
     if (inner.type === 'message_start') {
       usage.prompt_tokens = inner.message.usage.input_tokens;
+      applyCacheFields(usage, inner.message.usage);
     } else if (inner.type === 'message_delta') {
       usage.completion_tokens = inner.usage.output_tokens;
       usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
@@ -30,6 +56,7 @@ export function updateUsageFromEvent(usage: OpenAICompletionUsage, event: CliEve
     usage.prompt_tokens = event.usage.input_tokens;
     usage.completion_tokens = event.usage.output_tokens;
     usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
+    applyCacheFields(usage, event.usage);
   }
 }
 
@@ -52,7 +79,7 @@ export async function collectOpenAIResponse(
   let finishReason: 'stop' | 'tool_calls' | 'length' | null = null;
   const toolCalls: AccumulatedToolCall[] = [];
   let currentToolCallIndex = -1;
-  let usage: OpenAICompletionUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+  const usage: OpenAICompletionUsage = makeEmptyUsage();
   let sawToolUseStop = false;
   let rateLimitInfo: RateLimitInfo | undefined;
 
