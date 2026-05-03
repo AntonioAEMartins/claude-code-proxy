@@ -2,7 +2,7 @@ import type { CliEvent } from '../protocol/cli-types.js';
 import type { OpenAIChatCompletionChunk, OpenAICompletionUsage } from '../protocol/openai-types.js';
 import { logger } from '../util/logger.js';
 import { stripMcpToolPrefix } from '../tools/tool-translator.js';
-import { updateUsageFromEvent } from './cli-to-openai.js';
+import { makeEmptyUsage, updateUsageFromEvent } from './cli-to-openai.js';
 
 function makeChunk(
   id: string,
@@ -54,11 +54,7 @@ export async function* cliToOpenAISSE(
   let toolCallIndex = -1;
   let sentRole = false;
   let sawToolUseStop = false;
-  const usage: OpenAICompletionUsage = {
-    prompt_tokens: 0,
-    completion_tokens: 0,
-    total_tokens: 0,
-  };
+  const usage: OpenAICompletionUsage = makeEmptyUsage();
 
   for await (const event of events) {
     updateUsageFromEvent(usage, event);
